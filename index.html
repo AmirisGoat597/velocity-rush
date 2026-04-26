@@ -994,8 +994,8 @@ function checkZones() {
       comboCount++;
       showCombo();
       updateHUD();
-      // last checkpoint triggers level complete
-      if (checkpoints.every(c=>c.reached)) { levelComplete(); return; }
+      // last checkpoint in the level triggers level complete
+      if (checkpoints.indexOf(cp) === checkpoints.length-1) { levelComplete(); return; }
     }
   }
 
