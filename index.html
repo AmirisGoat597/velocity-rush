@@ -994,6 +994,8 @@ function checkZones() {
       comboCount++;
       showCombo();
       updateHUD();
+      // last checkpoint triggers level complete
+      if (checkpoints.every(c=>c.reached)) { levelComplete(); return; }
     }
   }
 
@@ -1300,35 +1302,31 @@ function updatePlayer(dt) {
 
   // ── Jump ──────────────────────────────────────────────────
   if (pb.jumpBuffer>0) {
-    if (pb.coyoteTime>0 && pb.jumpsLeft===3) {
-      // first jump (ground)
-      pb.vel.y=JUMP_FORCE;
-      pb.jumpsLeft=2;
-      pb.coyoteTime=0; pb.jumpBuffer=0;
-      sfxJump();
-      spawnParticles(pb.pos.clone(),[1,1,1],8);
-    } else if (pb.jumpsLeft===2 && pb.coyoteTime<=0) {
-      // double jump
-      pb.vel.y=JUMP_FORCE*0.88;
-      pb.jumpsLeft=1;
-      pb.jumpBuffer=0;
-      sfxDoubleJump();
-      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[0.3,0.8,1],16);
-    } else if (pb.jumpsLeft===1 && pb.coyoteTime<=0) {
-      // triple jump
-      pb.vel.y=JUMP_FORCE*1.15;
-      pb.jumpsLeft=0;
-      pb.jumpBuffer=0;
-      sfxDoubleJump(); playTone(900,'sine',.12,.18,.06);
-      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[1,0.5,1],24);
-    } else if (pb.isWallRunning) {
-      // wall jump
+    if (pb.isWallRunning) {
       pb.vel.y=JUMP_FORCE;
       pb.vel.x+=pb.wallNormal.x*8;
       pb.vel.z+=pb.wallNormal.z*8;
-      pb.jumpBuffer=0;
-      pb.isWallRunning=false;
+      pb.jumpBuffer=0; pb.isWallRunning=false;
       sfxDoubleJump();
+    } else if (pb.jumpsLeft===3 || (pb.coyoteTime>0 && pb.jumpsLeft>0)) {
+      // first jump (ground or coyote)
+      pb.vel.y=JUMP_FORCE;
+      pb.jumpsLeft=Math.min(pb.jumpsLeft-1,2);
+      pb.coyoteTime=0; pb.jumpBuffer=0;
+      sfxJump();
+      spawnParticles(pb.pos.clone(),[1,1,1],8);
+    } else if (pb.jumpsLeft===2) {
+      // double jump
+      pb.vel.y=JUMP_FORCE*0.9;
+      pb.jumpsLeft=1; pb.jumpBuffer=0;
+      sfxDoubleJump();
+      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[0.3,0.8,1],16);
+    } else if (pb.jumpsLeft===1) {
+      // triple jump — highest + purple burst
+      pb.vel.y=JUMP_FORCE*1.2;
+      pb.jumpsLeft=0; pb.jumpBuffer=0;
+      sfxDoubleJump(); playTone(900,'sine',.15,.2,.05);
+      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[1,0.4,1],28);
     }
   }
 
