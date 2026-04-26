@@ -859,6 +859,7 @@ function playerAABB(pos, h) {
 function resolveY(pos, vel, height) {
   let onGround=false;
   let groundY=-Infinity;
+  let groundPlat=null;
   const r=0.36;
 
   for (const p of platforms) {
@@ -873,9 +874,10 @@ function resolveY(pos, vel, height) {
       if (xy > groundY) {
         groundY=xy;
         onGround=true;
+        groundPlat=p;
 
-        if (p.type==='danger') { die(); return {onGround:false}; }
-        if (p.type==='spring') { vel.y=18; sfxJump(); spawnParticles(pos,[1,.6,0],20); onGround=false; }
+        if (p.type==='danger') { die(); return {onGround:false, groundPlat:null}; }
+        if (p.type==='spring') { vel.y=18; sfxJump(); spawnParticles(pos,[1,.6,0],20); onGround=false; groundPlat=null; }
         if (p.type==='ice')    { /* handled in move */ }
       }
     }
@@ -887,7 +889,7 @@ function resolveY(pos, vel, height) {
   }
 
   if (onGround) { pos.y=groundY; }
-  return {onGround, groundY};
+  return {onGround, groundPlat};
 }
 
 function resolveXZ(pos, vel, height) {
@@ -982,8 +984,9 @@ function checkZones() {
 
   for (const cp of checkpoints) {
     if (cp.reached) continue;
-    const d=cp.pos.distanceTo(p);
-    if (d<2.5) {
+    const dx=cp.pos.x-p.x, dz=cp.pos.z-p.z;
+    const dy=Math.abs(cp.pos.y-p.y);
+    if (Math.sqrt(dx*dx+dz*dz)<4 && dy<5) {
       cp.reached=true;
       lastCheckpointPos.copy(cp.pos);
       hasCheckpoint=true;
@@ -1174,12 +1177,14 @@ function animateCPRings(dt) {
 // ── Moving platforms update ───────────────────────────────────
 function updateMovingPlatforms(t) {
   for (const p of movingPlatforms) {
+    const prevX=p.mesh.position.x, prevY=p.mesh.position.y, prevZ=p.mesh.position.z;
     const offset=Math.sin(t*p.speed+p.phase)*p.dist;
     const np=p.origPos.clone();
     if (p.axis==='x') np.x+=offset;
     if (p.axis==='y') np.y+=offset;
     if (p.axis==='z') np.z+=offset;
     p.mesh.position.copy(np);
+    p.delta = { x: np.x-prevX, y: np.y-prevY, z: np.z-prevZ };
     const half=new THREE.Vector3(
       (p.max.x-p.min.x)/2, (p.max.y-p.min.y)/2, (p.max.z-p.min.z)/2
     );
@@ -1336,7 +1341,14 @@ function updatePlayer(dt) {
   resolveXZ(pb.pos, pb.vel, targetHeight);
 
   pb.pos.y+=pb.vel.y*dt;
-  const {onGround}=resolveY(pb.pos, pb.vel, targetHeight);
+  const {onGround, groundPlat}=resolveY(pb.pos, pb.vel, targetHeight);
+
+  // Stick to moving platform — carry its delta this frame
+  if (onGround && groundPlat && groundPlat.delta) {
+    pb.pos.x+=groundPlat.delta.x;
+    pb.pos.y+=groundPlat.delta.y;
+    pb.pos.z+=groundPlat.delta.z;
+  }
 
   if (!wasOnGround && onGround && pb.vel.y<-2) {
     sfxLand();
