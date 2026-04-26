@@ -168,6 +168,30 @@
       font-size: 13px; opacity: .55; letter-spacing: 2px; margin-bottom: 36px;
     }
 
+    /* level select */
+    .level-cards {
+      display: flex; gap: 18px; margin-bottom: 36px; flex-wrap: wrap; justify-content: center;
+    }
+    .level-card {
+      width: 160px; border-radius: 12px; overflow: hidden; cursor: pointer; pointer-events: all;
+      border: 2px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.06);
+      transition: transform .15s, border-color .15s, box-shadow .15s;
+    }
+    .level-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(0,229,255,.6);
+      box-shadow: 0 8px 28px rgba(0,229,255,.25);
+    }
+    .level-card-thumb {
+      height: 80px; display: flex; align-items: center; justify-content: center;
+      font-size: 30px;
+    }
+    .level-card-body { padding: 10px 12px 14px; }
+    .level-card-title { font-size: 13px; font-weight: 700; letter-spacing: 1px; margin-bottom: 3px; }
+    .level-card-sub   { font-size: 10px; opacity: .5; letter-spacing: 1px; }
+    .level-card-best  { font-size: 11px; color: #ffe066; margin-top: 6px; letter-spacing: 1px; }
+
     /* minimap */
     #minimap {
       position: absolute; bottom: 22px; right: 22px;
@@ -238,14 +262,50 @@
     <div class="ctrl-row"><span class="key">R</span><span>Restart</span></div>
     <div class="ctrl-row"><span class="key">Esc</span><span>Pause</span></div>
   </div>
-  <button class="btn" id="start-btn">Play</button>
+  <button class="btn" id="start-btn">Select Level</button>
+</div>
+
+<!-- LEVEL SELECT -->
+<div class="screen hidden" id="level-select-screen">
+  <h1>Select Level</h1>
+  <p class="sub">Choose your run</p>
+  <div class="level-cards">
+    <div class="level-card" id="lc0">
+      <div class="level-card-thumb" style="background:linear-gradient(135deg,#1b4332,#2d6a4f)">🏙️</div>
+      <div class="level-card-body">
+        <div class="level-card-title">Tutorial Rooftops</div>
+        <div class="level-card-sub">LEVEL 1 · EASY</div>
+        <div class="level-card-best" id="lc0-best">Best: --</div>
+      </div>
+    </div>
+    <div class="level-card" id="lc1">
+      <div class="level-card-thumb" style="background:linear-gradient(135deg,#1a0533,#4361ee)">🌆</div>
+      <div class="level-card-body">
+        <div class="level-card-title">Neon City</div>
+        <div class="level-card-sub">LEVEL 2 · MEDIUM</div>
+        <div class="level-card-best" id="lc1-best">Best: --</div>
+      </div>
+    </div>
+    <div class="level-card" id="lc2">
+      <div class="level-card-thumb" style="background:linear-gradient(135deg,#3d1c00,#ff6b35)">🌋</div>
+      <div class="level-card-body">
+        <div class="level-card-title">Sky Temple</div>
+        <div class="level-card-sub">LEVEL 3 · HARD</div>
+        <div class="level-card-best" id="lc2-best">Best: --</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn" id="back-btn" style="background:rgba(255,255,255,.1);box-shadow:none;font-size:12px;padding:10px 28px;">Back</button>
 </div>
 
 <!-- PAUSE SCREEN -->
 <div class="screen hidden" id="pause-screen">
   <h1>Paused</h1>
-  <p class="sub" style="margin-bottom:32px">Press ESC or click to resume</p>
-  <button class="btn" id="resume-btn">Resume</button>
+  <p class="sub" style="margin-bottom:24px">Press ESC or click to resume</p>
+  <div style="display:flex;gap:14px;pointer-events:all">
+    <button class="btn" id="resume-btn">Resume</button>
+    <button class="btn" id="pause-levels-btn" style="background:rgba(255,255,255,.1);box-shadow:none;">Levels</button>
+  </div>
 </div>
 
 <!-- LEVEL COMPLETE -->
@@ -253,7 +313,10 @@
   <h1>Level Clear!</h1>
   <div class="big-time" id="finish-time">00:00.00</div>
   <div class="best-time" id="best-time-label">Best: --:--:--</div>
-  <button class="btn" id="next-btn">Next Level</button>
+  <div style="display:flex;gap:14px;pointer-events:all;margin-top:0">
+    <button class="btn" id="next-btn">Next Level</button>
+    <button class="btn" id="levels-btn" style="background:rgba(255,255,255,.1);box-shadow:none;">All Levels</button>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
@@ -1341,33 +1404,61 @@ function loop(ts) {
 }
 
 // ── UI wiring ────────────────────────────────────────────────
-document.getElementById('start-btn').addEventListener('click', () => {
+function showLevelSelect() {
+  ['start-screen','pause-screen','level-screen'].forEach(id=>
+    document.getElementById(id).classList.add('hidden'));
+  // refresh best times on cards
+  bestTimes.forEach((t,i)=>{
+    document.getElementById('lc'+i+'-best').textContent =
+      t < Infinity ? 'Best: '+formatTime(t) : 'Best: --';
+  });
+  document.getElementById('level-select-screen').classList.remove('hidden');
+}
+
+function startLevel(idx) {
   ensureAudio();
-  currentLevel=0;
+  document.getElementById('level-select-screen').classList.add('hidden');
+  currentLevel=idx;
   deaths=0; timer=0; hasCheckpoint=false;
+  checkpoints.forEach(cp=>cp.reached=false);
   LEVELS[currentLevel]();
-  document.getElementById('start-screen').classList.add('hidden');
   state='playing'; timerRunning=true;
   lockPointer();
+}
+
+document.getElementById('start-btn').addEventListener('click', () => {
+  ensureAudio();
+  showLevelSelect();
 });
 
-document.getElementById('resume-btn').addEventListener('click', () => {
-  togglePause();
+document.getElementById('back-btn').addEventListener('click', () => {
+  document.getElementById('level-select-screen').classList.add('hidden');
+  document.getElementById('start-screen').classList.remove('hidden');
+});
+
+[0,1,2].forEach(i => {
+  document.getElementById('lc'+i).addEventListener('click', () => startLevel(i));
+});
+
+document.getElementById('resume-btn').addEventListener('click', () => { togglePause(); });
+
+document.getElementById('pause-levels-btn').addEventListener('click', () => {
+  state='paused';
+  unlockPointer();
+  document.getElementById('pause-screen').classList.add('hidden');
+  showLevelSelect();
 });
 
 document.getElementById('next-btn').addEventListener('click', () => {
   ensureAudio();
   document.getElementById('level-screen').classList.add('hidden');
-  if (currentLevel<LEVELS.length-1) {
-    currentLevel++;
-  } else {
-    currentLevel=0;
-  }
-  timer=0; hasCheckpoint=false;
-  checkpoints.forEach(cp=>cp.reached=false);
-  LEVELS[currentLevel]();
-  state='playing'; timerRunning=true;
-  lockPointer();
+  const next = currentLevel < LEVELS.length-1 ? currentLevel+1 : 0;
+  startLevel(next);
+});
+
+document.getElementById('levels-btn').addEventListener('click', () => {
+  document.getElementById('level-screen').classList.add('hidden');
+  showLevelSelect();
 });
 
 // Start rendering immediately (even on menu)
