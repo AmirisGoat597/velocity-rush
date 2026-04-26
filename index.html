@@ -243,6 +243,7 @@
   <div id="jump-pips">
     <div class="pip active" id="pip0"></div>
     <div class="pip" id="pip1"></div>
+    <div class="pip" id="pip2"></div>
   </div>
 
   <div id="minimap"><canvas id="mm-canvas" width="110" height="110"></canvas></div>
@@ -428,7 +429,7 @@ const playerBody = {
   pos: new THREE.Vector3(),
   vel: new THREE.Vector3(),
   onGround: false,
-  jumpsLeft: 2,
+  jumpsLeft: 3,
   isSliding: false,
   isCrouching: false,
   isWallRunning: false,
@@ -958,7 +959,7 @@ function respawn() {
   }
   playerBody.vel.set(0,0,0);
   playerBody.onGround=false;
-  playerBody.jumpsLeft=2;
+  playerBody.jumpsLeft=3;
   playerBody.isSliding=false;
   playerBody.isWallRunning=false;
   playerBody.isCrouching=false;
@@ -1046,6 +1047,7 @@ function updateHUD() {
   // jump pips
   document.getElementById('pip0').classList.toggle('active', playerBody.jumpsLeft>=1);
   document.getElementById('pip1').classList.toggle('active', playerBody.jumpsLeft>=2);
+  document.getElementById('pip2').classList.toggle('active', playerBody.jumpsLeft>=3);
 
   // wall indicator
   document.getElementById('wall-indicator').classList.toggle('show', playerBody.isWallRunning);
@@ -1298,20 +1300,27 @@ function updatePlayer(dt) {
 
   // ── Jump ──────────────────────────────────────────────────
   if (pb.jumpBuffer>0) {
-    if (pb.coyoteTime>0 && pb.jumpsLeft===2) {
+    if (pb.coyoteTime>0 && pb.jumpsLeft===3) {
       // first jump (ground)
       pb.vel.y=JUMP_FORCE;
-      pb.jumpsLeft=1;
+      pb.jumpsLeft=2;
       pb.coyoteTime=0; pb.jumpBuffer=0;
       sfxJump();
       spawnParticles(pb.pos.clone(),[1,1,1],8);
-    } else if (pb.jumpsLeft>0 && pb.coyoteTime<=0) {
+    } else if (pb.jumpsLeft===2 && pb.coyoteTime<=0) {
       // double jump
       pb.vel.y=JUMP_FORCE*0.88;
-      pb.jumpsLeft=0;
+      pb.jumpsLeft=1;
       pb.jumpBuffer=0;
       sfxDoubleJump();
       spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[0.3,0.8,1],16);
+    } else if (pb.jumpsLeft===1 && pb.coyoteTime<=0) {
+      // triple jump
+      pb.vel.y=JUMP_FORCE*1.15;
+      pb.jumpsLeft=0;
+      pb.jumpBuffer=0;
+      sfxDoubleJump(); playTone(900,'sine',.12,.18,.06);
+      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[1,0.5,1],24);
     } else if (pb.isWallRunning) {
       // wall jump
       pb.vel.y=JUMP_FORCE;
@@ -1337,7 +1346,7 @@ function updatePlayer(dt) {
     spawnParticles(pb.pos.clone(),[0.8,0.8,0.8],Math.floor(spd*1.5));
   }
   if (onGround && !pb.onGround) {
-    pb.jumpsLeft=2; // reset on land
+    pb.jumpsLeft=3; // reset on land
   }
   wasOnGround=pb.onGround;
   pb.onGround=onGround;
