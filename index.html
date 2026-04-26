@@ -381,7 +381,10 @@ let comboCount = 0;
 
 // ── Input ───────────────────────────────────────────────────
 const keys = {};
+let jumpPressed = false; // rising-edge flag, consumed on use
+
 window.addEventListener('keydown', e => {
+  if (!keys[e.code] && e.code === 'Space') jumpPressed = true;
   keys[e.code] = true;
   if (e.code==='Escape' && state==='playing') togglePause();
   if (e.code==='KeyR' && (state==='playing'||state==='dead')) respawn();
@@ -1289,8 +1292,8 @@ function updatePlayer(dt) {
   if (pb.onGround) pb.coyoteTime=0.12;
   else if (pb.coyoteTime>0) pb.coyoteTime-=dt;
 
-  // Jump buffer
-  if (keys['Space']) pb.jumpBuffer=0.12;
+  // Jump buffer — only on key-down edge, not while held
+  if (jumpPressed) { pb.jumpBuffer=0.15; jumpPressed=false; }
   else if (pb.jumpBuffer>0) pb.jumpBuffer-=dt;
 
   // ── Jump ──────────────────────────────────────────────────
