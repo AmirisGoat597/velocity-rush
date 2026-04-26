@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Velocity Rush — 3D Parkour</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+    canvas { display: block; }
+
+    /* ── HUD ── */
+    #hud {
+      position: fixed; inset: 0; pointer-events: none;
+      color: #fff; user-select: none;
+    }
+
+    /* crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      width: 20px; height: 20px;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute;
+      background: rgba(255,255,255,0.85);
+      border-radius: 2px;
+    }
+    #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+    #crosshair::after  { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+
+    /* top-left stats */
+    #stats {
+      position: absolute; top: 18px; left: 22px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; letter-spacing: .5px; text-transform: uppercase;
+    }
+    .stat-label { opacity: .6; font-size: 11px; width: 60px; }
+    .stat-val   { font-weight: 700; font-size: 15px; min-width: 40px; }
+    #timer-val  { font-size: 22px; font-weight: 900; color: #ffe066; letter-spacing: 2px; }
+
+    /* speed bar */
+    #speed-wrap {
+      position: absolute; bottom: 36px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    #speed-label { font-size: 10px; letter-spacing: 2px; opacity: .6; }
+    #speed-bar-bg {
+      width: 220px; height: 6px; background: rgba(255,255,255,.15);
+      border-radius: 99px; overflow: hidden;
+    }
+    #speed-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg,#4fc3f7,#00e5ff);
+      border-radius: 99px;
+      transition: width .08s linear, background .3s;
+    }
+    #speed-num { font-size: 11px; opacity: .5; }
+
+    /* jump pips */
+    #jump-pips {
+      position: absolute; bottom: 70px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 6px;
+    }
+    .pip {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: rgba(255,255,255,.2);
+      border: 1.5px solid rgba(255,255,255,.4);
+      transition: background .15s, transform .15s;
+    }
+    .pip.active { background: #fff; transform: scale(1.25); }
+
+    /* combo */
+    #combo {
+      position: absolute; top: 18px; right: 22px;
+      text-align: right;
+      opacity: 0; transition: opacity .3s;
+    }
+    #combo.show { opacity: 1; }
+    #combo-num { font-size: 38px; font-weight: 900; color: #ff6b6b; line-height: 1; }
+    #combo-label { font-size: 11px; letter-spacing: 3px; opacity: .7; }
+
+    /* wall-run indicator */
+    #wall-indicator {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      font-size: 11px; letter-spacing: 3px; opacity: 0;
+      color: #4fc3f7; text-transform: uppercase;
+      transition: opacity .2s;
+      margin-top: 28px;
+    }
+    #wall-indicator.show { opacity: 1; }
+
+    /* checkpoint flash */
+    #cp-flash {
+      position: absolute; inset: 0;
+      background: rgba(100,255,100,.12);
+      opacity: 0; pointer-events: none;
+      transition: opacity .1s;
+    }
+
+    /* death flash */
+    #death-flash {
+      position: absolute; inset: 0;
+      background: rgba(255,50,50,.35);
+      opacity: 0; pointer-events: none;
+      transition: opacity .15s;
+    }
+
+    /* ── SCREENS ── */
+    .screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,.82);
+      backdrop-filter: blur(6px);
+      z-index: 20;
+    }
+    .screen.hidden { display: none; }
+
+    .screen h1 {
+      font-size: 52px; font-weight: 900;
+      letter-spacing: 6px; text-transform: uppercase;
+      background: linear-gradient(135deg,#00e5ff,#4fc3f7 40%,#ffe066);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .screen .sub {
+      font-size: 14px; letter-spacing: 3px; opacity: .5; margin-bottom: 40px;
+    }
+
+    .controls-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px 32px; margin-bottom: 40px; font-size: 13px;
+    }
+    .ctrl-row { display: flex; gap: 12px; align-items: center; }
+    .key {
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.25);
+      padding: 3px 10px; border-radius: 5px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      min-width: 46px; text-align: center;
+    }
+
+    .btn {
+      padding: 13px 44px; font-size: 15px; font-weight: 700;
+      letter-spacing: 3px; text-transform: uppercase;
+      border: none; border-radius: 8px; cursor: pointer;
+      background: linear-gradient(135deg,#00b4d8,#0077b6);
+      color: #fff; pointer-events: all;
+      transition: transform .1s, box-shadow .1s;
+      box-shadow: 0 4px 24px rgba(0,180,216,.4);
+    }
+    .btn:hover  { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,180,216,.55); }
+    .btn:active { transform: translateY(0); }
+
+    /* level complete */
+    #level-screen .big-time {
+      font-size: 56px; font-weight: 900; color: #ffe066;
+      letter-spacing: 4px; margin-bottom: 6px;
+    }
+    #level-screen .best-time {
+      font-size: 13px; opacity: .55; letter-spacing: 2px; margin-bottom: 36px;
+    }
+
+    /* minimap */
+    #minimap {
+      position: absolute; bottom: 22px; right: 22px;
+      width: 110px; height: 110px;
+      background: rgba(0,0,0,.45);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #minimap canvas { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="crosshair"></div>
+
+  <div id="stats">
+    <div class="stat-row">
+      <span class="stat-label">Time</span>
+      <span class="stat-val" id="timer-val">00:00.00</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Level</span>
+      <span class="stat-val" id="level-val">1</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">CP</span>
+      <span class="stat-val" id="cp-val">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Deaths</span>
+      <span class="stat-val" id="death-val">0</span>
+    </div>
+  </div>
+
+  <div id="combo" class=""><div id="combo-num">x1</div><div id="combo-label">Combo</div></div>
+  <div id="wall-indicator">Wall Run</div>
+  <div id="cp-flash"></div>
+  <div id="death-flash"></div>
+
+  <div id="speed-wrap">
+    <div id="speed-label">Speed</div>
+    <div id="speed-bar-bg"><div id="speed-bar-fill"></div></div>
+    <div id="speed-num">0 u/s</div>
+  </div>
+
+  <div id="jump-pips">
+    <div class="pip active" id="pip0"></div>
+    <div class="pip" id="pip1"></div>
+  </div>
+
+  <div id="minimap"><canvas id="mm-canvas" width="110" height="110"></canvas></div>
+</div>
+
+<!-- START SCREEN -->
+<div class="screen" id="start-screen">
+  <h1>Velocity Rush</h1>
+  <p class="sub">3D Parkour</p>
+  <div class="controls-grid">
+    <div class="ctrl-row"><span class="key">W A S D</span><span>Move</span></div>
+    <div class="ctrl-row"><span class="key">Mouse</span><span>Look</span></div>
+    <div class="ctrl-row"><span class="key">Space</span><span>Jump / Double-Jump</span></div>
+    <div class="ctrl-row"><span class="key">Shift</span><span>Sprint</span></div>
+    <div class="ctrl-row"><span class="key">Ctrl</span><span>Slide / Crouch</span></div>
+    <div class="ctrl-row"><span class="key">Q</span><span>Wall-Run (near wall)</span></div>
+    <div class="ctrl-row"><span class="key">R</span><span>Restart</span></div>
+    <div class="ctrl-row"><span class="key">Esc</span><span>Pause</span></div>
+  </div>
+  <button class="btn" id="start-btn">Play</button>
+</div>
+
+<!-- PAUSE SCREEN -->
+<div class="screen hidden" id="pause-screen">
+  <h1>Paused</h1>
+  <p class="sub" style="margin-bottom:32px">Press ESC or click to resume</p>
+  <button class="btn" id="resume-btn">Resume</button>
+</div>
+
+<!-- LEVEL COMPLETE -->
+<div class="screen hidden" id="level-screen">
+  <h1>Level Clear!</h1>
+  <div class="big-time" id="finish-time">00:00.00</div>
+  <div class="best-time" id="best-time-label">Best: --:--:--</div>
+  <button class="btn" id="next-btn">Next Level</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════
+//  VELOCITY RUSH — 3D Parkour  (Three.js)
+// ═══════════════════════════════════════════════════════════
+
+// ── Audio Context (Web Audio API) ──────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+function ensureAudio() { if (!audioCtx) audioCtx = new AudioCtx(); }
+
+function playTone(freq, type='sine', duration=0.08, vol=0.18, startDelay=0) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime + startDelay);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + startDelay + duration);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(audioCtx.currentTime + startDelay);
+  o.stop(audioCtx.currentTime + startDelay + duration + 0.01);
+}
+
+function sfxJump()       { playTone(260,'square',.12,.12); playTone(360,'square',.08,.08,.04); }
+function sfxDoubleJump() { playTone(400,'sawtooth',.1,.14); playTone(600,'sine',.1,.1,.05); }
+function sfxLand()       { playTone(80,'square',.06,.22); }
+function sfxCheckpoint() { [500,620,780].forEach((f,i)=>playTone(f,'sine',.18,.18,i*.1)); }
+function sfxDeath()      { [300,200,120].forEach((f,i)=>playTone(f,'sawtooth',.18,.22,i*.1)); }
+function sfxFinish()     { [500,640,800,1000].forEach((f,i)=>playTone(f,'sine',.25,.2,i*.12)); }
+function sfxWallrun()    { playTone(180,'sine',.3,.09); }
+
+// ── Renderer ────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(80, window.innerWidth/window.innerHeight, 0.05, 1200);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ── Game state ──────────────────────────────────────────────
+let state = 'menu'; // menu | playing | paused | dead | levelcomplete
+let currentLevel = 0;
+let deaths = 0;
+let timer = 0;
+let timerRunning = false;
+let bestTimes = [Infinity, Infinity, Infinity];
+let comboTimer = 0;
+let comboCount = 0;
+
+// ── Input ───────────────────────────────────────────────────
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code==='Escape' && state==='playing') togglePause();
+  if (e.code==='KeyR' && (state==='playing'||state==='dead')) respawn();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── Pointer Lock ────────────────────────────────────────────
+let mouseDX=0, mouseDY=0;
+document.addEventListener('mousemove', e => {
+  if (state!=='playing') return;
+  mouseDX += e.movementX;
+  mouseDY += e.movementY;
+});
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && state==='playing') togglePause();
+});
+
+function lockPointer() {
+  renderer.domElement.requestPointerLock();
+}
+function unlockPointer() {
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+// ── Camera pitch/yaw ─────────────────────────────────────────
+let yaw=0, pitch=0;
+const SENS = 0.0018;
+const MAX_PITCH = Math.PI/2 - 0.04;
+
+// ── Player ──────────────────────────────────────────────────
+const GRAVITY       = -28;
+const JUMP_FORCE    =  10.5;
+const WALK_SPEED    =  8;
+const SPRINT_SPEED  =  14;
+const SLIDE_BOOST   =  18;
+const AIR_CONTROL   =  0.38;
+const WALL_RUN_GRAV = -3.5;
+const WALL_RUN_SPEED=  13;
+
+const playerBody = {
+  pos: new THREE.Vector3(),
+  vel: new THREE.Vector3(),
+  onGround: false,
+  jumpsLeft: 2,
+  isSliding: false,
+  isCrouching: false,
+  isWallRunning: false,
+  wallNormal: new THREE.Vector3(),
+  wallRunTime: 0,
+  standHeight: 1.75,
+  crouchHeight: 1.0,
+  slideTimer: 0,
+  coyoteTime: 0,
+  jumpBuffer: 0,
+};
+
+// ── Collision meshes (AABB) ──────────────────────────────────
+let platforms = [];   // { min:V3, max:V3, type, mesh }
+let checkpoints = []; // { pos:V3, reached:bool, mesh }
+let finishZone = null;// { min:V3, max:V3 }
+let killPlanes = [];  // y threshold
+
+// ── Particles ───────────────────────────────────────────────
+const particles = [];
+const pGeo = new THREE.BufferGeometry();
+const MAX_PARTS = 600;
+const pPositions = new Float32Array(MAX_PARTS*3);
+const pColors    = new Float32Array(MAX_PARTS*3);
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions,3));
+pGeo.setAttribute('color',    new THREE.BufferAttribute(pColors,3));
+const pMat = new THREE.PointsMaterial({size:.18, vertexColors:true, transparent:true, opacity:.85});
+const pSystem = new THREE.Points(pGeo, pMat);
+pSystem.frustumCulled = false;
+scene.add(pSystem);
+
+function spawnParticles(pos, color=[1,0.4,0], count=14) {
+  for (let i=0;i<count;i++) {
+    if (particles.length >= MAX_PARTS) particles.shift();
+    particles.push({
+      x:pos.x, y:pos.y, z:pos.z,
+      vx:(Math.random()-.5)*5, vy:Math.random()*4+1, vz:(Math.random()-.5)*5,
+      life:1, maxLife:0.6+Math.random()*0.6,
+      r:color[0], g:color[1], b:color[2],
+    });
+  }
+}
+function updateParticles(dt) {
+  for (let i=particles.length-1;i>=0;i--) {
+    const p=particles[i];
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt;
+    p.vy+=GRAVITY*dt*0.3;
+    p.life-=dt/p.maxLife;
+    if (p.life<=0) { particles.splice(i,1); continue; }
+  }
+  const n=Math.min(particles.length, MAX_PARTS);
+  for (let i=0;i<n;i++) {
+    pPositions[i*3]  =particles[i].x;
+    pPositions[i*3+1]=particles[i].y;
+    pPositions[i*3+2]=particles[i].z;
+    pColors[i*3]  =particles[i].r*particles[i].life;
+    pColors[i*3+1]=particles[i].g*particles[i].life;
+    pColors[i*3+2]=particles[i].b*particles[i].life;
+  }
+  pGeo.attributes.position.needsUpdate=true;
+  pGeo.attributes.color.needsUpdate=true;
+  pGeo.setDrawRange(0,n);
+}
+
+// ── Materials ────────────────────────────────────────────────
+function mat(color, rough=0.7, metal=0) {
+  return new THREE.MeshStandardMaterial({color, roughness:rough, metalness:metal});
+}
+const mats = {
+  ground:     mat(0x1a1a2e, 0.9),
+  platform:   mat(0x2d6a4f, 0.6, 0.1),
+  platformAlt:mat(0x1b4332, 0.65, 0.15),
+  moving:     mat(0x4361ee, 0.5, 0.3),
+  danger:     mat(0xe63946, 0.55, 0.1),
+  ice:        mat(0xa8dadc, 0.05, 0.4),
+  spring:     mat(0xf4a261, 0.55, 0.1),
+  wall:       mat(0x264653, 0.75),
+  wallRun:    mat(0x023e8a, 0.5, 0.2),
+  checkpoint: mat(0xffe066, 0.4, 0.5),
+  cpReached:  mat(0x44cf6c, 0.4, 0.5),
+  finish:     mat(0x9b5de5, 0.4, 0.6),
+  sky1:       mat(0x03045e),
+  sky2:       mat(0x023e8a),
+};
+
+// ── Helper: build box ────────────────────────────────────────
+function makeBox(sx,sy,sz, px,py,pz, material, type='solid', castShadow=true, receiveShadow=true) {
+  const geo  = new THREE.BoxGeometry(sx,sy,sz);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(px,py,pz);
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = receiveShadow;
+  scene.add(mesh);
+  const half = new THREE.Vector3(sx/2, sy/2, sz/2);
+  const center = new THREE.Vector3(px,py,pz);
+  platforms.push({
+    min: center.clone().sub(half),
+    max: center.clone().add(half),
+    type, mesh,
+    origPos: center.clone(),
+  });
+  return mesh;
+}
+
+function makeCylinder(rt,rb,h, px,py,pz, material) {
+  const geo  = new THREE.CylinderGeometry(rt,rb,h,20);
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.position.set(px,py,pz);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  scene.add(mesh);
+  const half=new THREE.Vector3(rt,h/2,rt);
+  const center=new THREE.Vector3(px,py,pz);
+  platforms.push({ min:center.clone().sub(half), max:center.clone().add(half), type:'solid', mesh, origPos:center.clone() });
+  return mesh;
+}
+
+// ── Checkpoint helper ───────────────────────────────────────
+function makeCheckpoint(px,py,pz) {
+  const geo  = new THREE.TorusGeometry(0.8, 0.12, 12, 36);
+  const mesh = new THREE.Mesh(geo, mats.checkpoint.clone());
+  mesh.position.set(px,py+1.2,pz);
+  mesh.rotation.x=Math.PI/2;
+  mesh.castShadow=true;
+  scene.add(mesh);
+  checkpoints.push({ pos:new THREE.Vector3(px,py,pz), reached:false, mesh });
+}
+
+// ── Floating text ────────────────────────────────────────────
+function makeLabel(text, px,py,pz, color=0xffffff, size=0.5) {
+  // Use a plane with canvas texture for labels
+  const canvas=document.createElement('canvas');
+  canvas.width=256; canvas.height=64;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='rgba(0,0,0,0)';
+  ctx.fillRect(0,0,256,64);
+  ctx.fillStyle=`#${color.toString(16).padStart(6,'0')}`;
+  ctx.font='bold 32px Segoe UI';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text,128,32);
+  const tex=new THREE.CanvasTexture(canvas);
+  const geo=new THREE.PlaneGeometry(size*4,size);
+  const mat2=new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false});
+  const mesh=new THREE.Mesh(geo,mat2);
+  mesh.position.set(px,py,pz);
+  scene.add(mesh);
+  return mesh;
+}
+
+// ── Moving platform ──────────────────────────────────────────
+const movingPlatforms = [];
+function makeMovingPlatform(sx,sy,sz, px,py,pz, axis, dist, speed, material=mats.moving) {
+  const geo=new THREE.BoxGeometry(sx,sy,sz);
+  const mesh=new THREE.Mesh(geo, material);
+  mesh.position.set(px,py,pz);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  scene.add(mesh);
+  const half=new THREE.Vector3(sx/2,sy/2,sz/2);
+  const center=new THREE.Vector3(px,py,pz);
+  const plat={ min:center.clone().sub(half), max:center.clone().add(half),
+                type:'moving', mesh, origPos:center.clone(),
+                axis, dist, speed, phase:Math.random()*Math.PI*2 };
+  platforms.push(plat);
+  movingPlatforms.push(plat);
+}
+
+function makeSpringPad(px,py,pz) {
+  makeBox(1.6,.25,1.6, px,py,pz, mats.spring, 'spring');
+  makeBox(1.4,.15,1.4, px,py+.2,pz, mats.spring, 'none');
+}
+
+// ── Lighting ─────────────────────────────────────────────────
+function buildLighting() {
+  scene.add(new THREE.AmbientLight(0x8899bb, 0.6));
+
+  const sun=new THREE.DirectionalLight(0xffeedd, 1.6);
+  sun.position.set(40,80,30);
+  sun.castShadow=true;
+  sun.shadow.mapSize.width=2048; sun.shadow.mapSize.height=2048;
+  sun.shadow.camera.left=-120; sun.shadow.camera.right=120;
+  sun.shadow.camera.top=120;   sun.shadow.camera.bottom=-120;
+  sun.shadow.camera.far=400;
+  sun.shadow.bias=-0.001;
+  scene.add(sun);
+
+  const fill=new THREE.DirectionalLight(0x4466cc, 0.4);
+  fill.position.set(-30,20,-40); scene.add(fill);
+}
+
+// ══════════════════════════════════════════════════════════
+//  LEVEL DEFINITIONS
+// ══════════════════════════════════════════════════════════
+function clearLevel() {
+  // Remove all objects except particles system
+  while(scene.children.length>0) scene.remove(scene.children[0]);
+  scene.add(pSystem);
+  platforms.length=0; checkpoints.length=0; movingPlatforms.length=0;
+  finishZone=null; killPlanes=[];
+}
+
+function buildSkybox(colorTop=0x03045e, colorBot=0x0077b6) {
+  scene.background=new THREE.Color(colorTop);
+  scene.fog=new THREE.Fog(colorTop, 80, 220);
+}
+
+// ─── LEVEL 1: Tutorial Rooftops ───────────────────────────
+function buildLevel1() {
+  clearLevel();
+  buildSkybox(0x0a0a1e, 0x1a1a3e);
+  buildLighting();
+  killPlanes.push(-30);
+
+  // Ground / start pad
+  makeBox(14,1,14, 0,-0.5,0, mats.platform);
+  makeLabel('START', 0,1.2,0, 0xffe066);
+
+  // Tutorial platforms — gradually increasing gaps
+  const defs=[
+    [6,0.5,4,   10,0,0],
+    [5,0.5,4,   20,0.5,0],
+    [4,0.5,3,   29,1,2],
+    [3,0.5,3,   37,1.5,-2],
+    [3,0.5,6,   44,2,0],
+  ];
+  defs.forEach(d=>makeBox(d[0],d[1],d[2], d[3],d[4],d[5], mats.platform));
+
+  // First checkpoint
+  makeCheckpoint(44,3.5,0);
+
+  // Long wall-run section (tall thin walls, close together)
+  makeBox(1,8,12, 52,4,0, mats.wallRun,'solid');
+  makeBox(1,8,12, 64,6,0, mats.wallRun,'solid');
+  makeBox(4,0.5,4, 70,6,0, mats.platform);
+
+  // Some moving platforms
+  makeMovingPlatform(3,.5,3, 78,7,0, 'z',5,1.4);
+  makeMovingPlatform(3,.5,3, 86,7,0, 'z',5,1.4);
+
+  // Second checkpoint
+  makeCheckpoint(95,8,0);
+
+  makeBox(6,0.5,6, 95,7.5,0, mats.platformAlt);
+
+  // Spring pad section
+  makeBox(4,0.5,4, 104,7.5,0, mats.platform);
+  makeSpringPad(112,7.75,0);
+  makeBox(4,0.5,4, 120,15,0, mats.platform);
+
+  // Narrow beams
+  makeBox(12,0.4,0.8, 130,15,0, mats.platformAlt);
+  makeBox(12,0.4,0.8, 143,16,0, mats.platformAlt);
+  makeBox(12,0.4,0.8, 156,17,0, mats.platformAlt);
+
+  // Third checkpoint
+  makeCheckpoint(168,18,0);
+  makeBox(6,0.5,6, 168,17.5,0, mats.platform);
+
+  // Final tower ascent
+  for (let i=0;i<6;i++) {
+    makeBox(4,0.5,4, 175+i*4, 18+i*2, (i%2===0?3:-3), mats.platform);
+  }
+
+  // Finish
+  const fx=195, fy=30, fz=0;
+  makeBox(7,0.5,7, fx,fy-.25,fz, mats.finish);
+  const fHalf=new THREE.Vector3(3.5,1.5,3.5);
+  const fCenter=new THREE.Vector3(fx,fy,fz);
+  finishZone={min:fCenter.clone().sub(fHalf), max:fCenter.clone().add(fHalf)};
+  makeLabel('FINISH', fx,fy+2,fz, 0x9b5de5);
+
+  // Respawn pos
+  playerBody.pos.set(0,2.5,0);
+  playerBody.vel.set(0,0,0);
+  yaw=0; pitch=0;
+}
+
+// ─── LEVEL 2: Neon City Rooftops ──────────────────────────
+function buildLevel2() {
+  clearLevel();
+  buildSkybox(0x0d0221, 0x1a0533);
+  buildLighting();
+  // Extra neon point lights
+  [[0xff0080,30,15,0],[0x0080ff,-30,15,30],[0x00ff80,60,25,-30]].forEach(([c,x,y,z])=>{
+    const l=new THREE.PointLight(c,.8,60); l.position.set(x,y,z); scene.add(l);
+  });
+  killPlanes.push(-20);
+
+  makeBox(12,1,12, 0,-0.5,0, mats.platform);
+  makeLabel('LVL 2', 0,1.5,0, 0xff0080);
+
+  // Zigzag rooftops with gaps
+  const zz=[
+    [8,1,8,   14,0,0],   [8,1,6,   24,2,-6],  [6,1,6,   33,4,0],
+    [5,1,5,   41,6,6],   [5,1,5,   49,8,0],   [4,1,4,   56,10,-5],
+  ];
+  zz.forEach(d=>makeBox(d[0],d[1],d[2],d[3],d[4],d[5], mats.platformAlt));
+
+  makeCheckpoint(56,12,-5);
+
+  // Ice platforms
+  makeBox(5,0.5,5, 65,12,-5, mats.ice,'ice');
+  makeBox(5,0.5,5, 74,12,-5, mats.ice,'ice');
+  makeBox(5,0.5,5, 83,13,-5, mats.ice,'ice');
+
+  makeBox(6,1,6, 93,13,-5, mats.platform);
+  makeCheckpoint(93,14.5,-5);
+
+  // Moving platforms across gap
+  makeMovingPlatform(3,.5,3, 103,14,-5, 'y',3,1.2);
+  makeMovingPlatform(3,.5,3, 113,15,-5, 'y',3,1.5);
+  makeMovingPlatform(3,.5,3, 123,14,-5, 'z',4,1.8);
+
+  makeBox(6,1,6, 132,15,-5, mats.platform);
+
+  // Danger pads between normal pads
+  for (let i=0;i<5;i++) {
+    makeBox(3,.5,3, 140+i*8,15,-5+(i%2===0?0:4), mats.platform);
+    if (i<4) makeBox(2,.3,2, 144+i*8,15,-5+2, mats.danger,'danger');
+  }
+
+  makeCheckpoint(180,16,0);
+  makeBox(7,1,7, 180,15,0, mats.platform);
+
+  // Wall-run corridor
+  makeBox(1,12,20, 190,21,0, mats.wallRun,'solid');
+  makeBox(1,12,20, 205,22,0, mats.wallRun,'solid');
+
+  makeBox(5,.5,5, 215,22,0, mats.platform);
+
+  // Spiral ascent
+  for (let i=0;i<8;i++) {
+    const a=i*(Math.PI/4);
+    makeBox(4,.5,4, 225+Math.cos(a)*10,22+i*2.5,Math.sin(a)*10, mats.platform);
+  }
+
+  const fx=225, fy=44, fz=0;
+  makeBox(8,1,8, fx,fy-.5,fz, mats.finish);
+  const fH=new THREE.Vector3(4,2,4);
+  const fC=new THREE.Vector3(fx,fy,fz);
+  finishZone={min:fC.clone().sub(fH),max:fC.clone().add(fH)};
+  makeLabel('FINISH', fx,fy+2.2,fz, 0x9b5de5);
+
+  playerBody.pos.set(0,2.5,0);
+  playerBody.vel.set(0,0,0);
+  yaw=0; pitch=0;
+}
+
+// ─── LEVEL 3: Sky Temple ──────────────────────────────────
+function buildLevel3() {
+  clearLevel();
+  buildSkybox(0x1a0a00, 0x3d1c00);
+  buildLighting();
+  const sun2=new THREE.PointLight(0xff6b35,1.2,200);
+  sun2.position.set(0,50,0); scene.add(sun2);
+  killPlanes.push(-10);
+
+  makeBox(10,2,10, 0,0,0, mats.platform);
+  makeLabel('LVL 3', 0,2.5,0, 0xff6b35);
+
+  // Floating islands
+  function island(px,py,pz,rx=1,rz=1) {
+    makeBox(8*rx,1.5,8*rz, px,py,pz, mats.platformAlt);
+    makeBox(7*rx,0.5,7*rz, px,py-0.8,pz, mat(0x1b4332,0.95)); // underside
+  }
+
+  island(0,0,0);
+  island(16,3,0);
+  island(28,7,3);
+  island(40,11,-3);
+  makeCheckpoint(40,13,-3);
+
+  // Very fast moving platforms
+  makeMovingPlatform(2.5,.5,2.5, 52,12,-3, 'x',8,3.0);
+  makeMovingPlatform(2.5,.5,2.5, 62,14,3,  'z',8,3.5);
+  makeMovingPlatform(2.5,.5,2.5, 72,16,-3, 'y',5,2.0);
+
+  island(84,18,0);
+  makeCheckpoint(84,20,0);
+
+  // Danger platforms only — must time carefully
+  for(let i=0;i<6;i++) {
+    makeMovingPlatform(2,.5,2, 95+i*10,19,0, 'z',6,2+i*0.3, mats.platform);
+  }
+
+  island(155,21,0);
+  makeCheckpoint(155,23,0);
+
+  // Narrow beams at high altitude
+  makeBox(20,0.4,0.6, 170,23,0, mats.platformAlt);
+  makeBox(20,0.4,0.6, 192,25,3, mats.platformAlt);
+  makeBox(20,0.4,0.6, 214,27,-3, mats.platformAlt);
+
+  island(228,29,0,1.4,1.4);
+  makeCheckpoint(228,31,0);
+
+  // Final gauntlet: moving platforms + wall runs + narrow beams
+  makeBox(1,14,18, 240,37,0, mats.wallRun,'solid');
+  makeBox(1,14,18, 255,38,0, mats.wallRun,'solid');
+  makeBox(1,14,18, 270,39,0, mats.wallRun,'solid');
+
+  island(285,42,0,1.2,1.2);
+
+  const fx=285, fy=45, fz=0;
+  const fH=new THREE.Vector3(5,2.5,5);
+  const fC=new THREE.Vector3(fx,fy,fz);
+  finishZone={min:fC.clone().sub(fH),max:fC.clone().add(fH)};
+  makeBox(10,2,10, fx,fy-1,fz, mats.finish);
+  makeLabel('FINISH', fx,fy+2.5,fz, 0x9b5de5);
+
+  playerBody.pos.set(0,2.5,0);
+  playerBody.vel.set(0,0,0);
+  yaw=0; pitch=0;
+}
+
+const LEVELS=[buildLevel1, buildLevel2, buildLevel3];
+
+// ── Physics helpers ──────────────────────────────────────────
+const _box=new THREE.Box3();
+const _pMin=new THREE.Vector3();
+const _pMax=new THREE.Vector3();
+
+function playerAABB(pos, h) {
+  const r=0.38;
+  _pMin.set(pos.x-r, pos.y,   pos.z-r);
+  _pMax.set(pos.x+r, pos.y+h, pos.z+r);
+}
+
+function resolveY(pos, vel, height) {
+  let onGround=false;
+  let groundY=-Infinity;
+  const r=0.36;
+
+  for (const p of platforms) {
+    if (p.type==='none') continue;
+    const mx=p.min.x, xx=p.max.x, my=p.min.y, xy=p.max.y, mz=p.min.z, xz=p.max.z;
+
+    if (pos.x+r<=mx || pos.x-r>=xx) continue;
+    if (pos.z+r<=mz || pos.z-r>=xz) continue;
+
+    // Feet touching top of platform
+    if (vel.y<=0 && pos.y>=xy-0.15 && pos.y<=xy+Math.abs(vel.y)*0.06+0.5) {
+      if (xy > groundY) {
+        groundY=xy;
+        onGround=true;
+
+        if (p.type==='danger') { die(); return {onGround:false}; }
+        if (p.type==='spring') { vel.y=18; sfxJump(); spawnParticles(pos,[1,.6,0],20); onGround=false; }
+        if (p.type==='ice')    { /* handled in move */ }
+      }
+    }
+    // Head hitting ceiling
+    if (vel.y>0 && pos.y+height>=my-0.05 && pos.y+height<=my+0.3
+        && pos.x+r>mx && pos.x-r<xx && pos.z+r>mz && pos.z-r<xz) {
+      vel.y=-0.5;
+    }
+  }
+
+  if (onGround) { pos.y=groundY; }
+  return {onGround, groundY};
+}
+
+function resolveXZ(pos, vel, height) {
+  const r=0.36;
+  for (const p of platforms) {
+    if (p.type==='none') continue;
+    const mx=p.min.x,xx=p.max.x,my=p.min.y,xy=p.max.y,mz=p.min.z,xz=p.max.z;
+    if (pos.y+height<my+0.05 || pos.y>xy-0.05) continue;
+
+    // X
+    if (pos.z+r>mz && pos.z-r<xz) {
+      if (pos.x+r>mx && pos.x+r<mx+0.5 && vel.x>0) { pos.x=mx-r; vel.x=0; }
+      if (pos.x-r<xx && pos.x-r>xx-0.5 && vel.x<0) { pos.x=xx+r; vel.x=0; }
+    }
+    // Z
+    if (pos.x+r>mx && pos.x-r<xx) {
+      if (pos.z+r>mz && pos.z+r<mz+0.5 && vel.z>0) { pos.z=mz-r; vel.z=0; }
+      if (pos.z-r<xz && pos.z-r>xz-0.5 && vel.z<0) { pos.z=xz+r; vel.z=0; }
+    }
+  }
+}
+
+// nearest wall for wall-running
+function findWall(pos, height) {
+  const r=0.55;
+  const dirs=[
+    new THREE.Vector3(1,0,0),
+    new THREE.Vector3(-1,0,0),
+    new THREE.Vector3(0,0,1),
+    new THREE.Vector3(0,0,-1),
+  ];
+  for (const p of platforms) {
+    if (p.type==='none') continue;
+    const mx=p.min.x,xx=p.max.x,my=p.min.y,xy=p.max.y,mz=p.min.z,xz=p.max.z;
+    if (pos.y+0.5>xy || pos.y+height<my) continue;
+
+    for (const d of dirs) {
+      const tx=pos.x+d.x*r, tz=pos.z+d.z*r;
+      if (tx>mx && tx<xx && tz>mz && tz<xz) {
+        return d.clone().negate(); // wall normal points away from wall
+      }
+    }
+  }
+  return null;
+}
+
+// ── Respawn & Die ────────────────────────────────────────────
+let lastCheckpointPos = new THREE.Vector3();
+let hasCheckpoint = false;
+
+function die() {
+  if (state==='dead') return;
+  state='dead';
+  deaths++;
+  sfxDeath();
+  spawnParticles(playerBody.pos.clone(),[1,0.1,0.1],30);
+  flashDeath();
+  updateHUD();
+  setTimeout(respawn, 700);
+}
+
+function respawn() {
+  state='playing';
+  if (hasCheckpoint) {
+    playerBody.pos.copy(lastCheckpointPos).add(new THREE.Vector3(0,1.5,0));
+  } else {
+    playerBody.pos.set(0,2.5,0);
+    yaw=0; pitch=0;
+  }
+  playerBody.vel.set(0,0,0);
+  playerBody.onGround=false;
+  playerBody.jumpsLeft=2;
+  playerBody.isSliding=false;
+  playerBody.isWallRunning=false;
+  playerBody.isCrouching=false;
+}
+
+function flashDeath() {
+  const el=document.getElementById('death-flash');
+  el.style.opacity=1;
+  setTimeout(()=>el.style.opacity=0, 300);
+}
+function flashCP() {
+  const el=document.getElementById('cp-flash');
+  el.style.opacity=1;
+  setTimeout(()=>el.style.opacity=0, 300);
+}
+
+// ── Check checkpoints / finish ───────────────────────────────
+function checkZones() {
+  const p=playerBody.pos;
+
+  for (const cp of checkpoints) {
+    if (cp.reached) continue;
+    const d=cp.pos.distanceTo(p);
+    if (d<2.5) {
+      cp.reached=true;
+      lastCheckpointPos.copy(cp.pos);
+      hasCheckpoint=true;
+      cp.mesh.material=mats.cpReached.clone();
+      sfxCheckpoint();
+      flashCP();
+      spawnParticles(cp.pos.clone().add(new THREE.Vector3(0,1,0)),[1,.9,0.1],22);
+      comboCount++;
+      showCombo();
+      updateHUD();
+    }
+  }
+
+  if (finishZone) {
+    const fz=finishZone;
+    if (p.x>fz.min.x&&p.x<fz.max.x && p.y>fz.min.y&&p.y<fz.max.y && p.z>fz.min.z&&p.z<fz.max.z) {
+      levelComplete();
+    }
+  }
+}
+
+function levelComplete() {
+  if (state==='levelcomplete') return;
+  state='levelcomplete';
+  timerRunning=false;
+  sfxFinish();
+  spawnParticles(playerBody.pos.clone(),[0.6,.2,1],40);
+
+  const t=timer;
+  if (t<bestTimes[currentLevel]) bestTimes[currentLevel]=t;
+
+  document.getElementById('finish-time').textContent=formatTime(t);
+  const best=bestTimes[currentLevel];
+  document.getElementById('best-time-label').textContent=
+    best<Infinity ? 'Best: '+formatTime(best) : 'Best: --';
+
+  const nextBtn=document.getElementById('next-btn');
+  if (currentLevel>=LEVELS.length-1) {
+    nextBtn.textContent='Play Again';
+  } else {
+    nextBtn.textContent='Next Level';
+  }
+
+  document.getElementById('level-screen').classList.remove('hidden');
+  unlockPointer();
+}
+
+// ── HUD updates ──────────────────────────────────────────────
+function formatTime(s) {
+  const m=Math.floor(s/60);
+  const sec=s%60;
+  return `${String(m).padStart(2,'0')}:${sec.toFixed(2).padStart(5,'0')}`;
+}
+
+function updateHUD() {
+  document.getElementById('timer-val').textContent=formatTime(timer);
+  document.getElementById('level-val').textContent=currentLevel+1;
+  document.getElementById('cp-val').textContent=checkpoints.filter(c=>c.reached).length+'/'+checkpoints.length;
+  document.getElementById('death-val').textContent=deaths;
+
+  // jump pips
+  document.getElementById('pip0').classList.toggle('active', playerBody.jumpsLeft>=1);
+  document.getElementById('pip1').classList.toggle('active', playerBody.jumpsLeft>=2);
+
+  // wall indicator
+  document.getElementById('wall-indicator').classList.toggle('show', playerBody.isWallRunning);
+
+  // speed bar
+  const speed=new THREE.Vector3(playerBody.vel.x,0,playerBody.vel.z).length();
+  const maxSpd=SPRINT_SPEED*1.5;
+  const pct=Math.min(speed/maxSpd*100,100);
+  document.getElementById('speed-bar-fill').style.width=pct+'%';
+  const hot=pct>75;
+  document.getElementById('speed-bar-fill').style.background=
+    hot?'linear-gradient(90deg,#ff6b6b,#ff0000)':'linear-gradient(90deg,#4fc3f7,#00e5ff)';
+  document.getElementById('speed-num').textContent=speed.toFixed(1)+' u/s';
+}
+
+function showCombo() {
+  comboTimer=2.5;
+  document.getElementById('combo-num').textContent='x'+comboCount;
+  document.getElementById('combo').classList.add('show');
+}
+
+// ── Minimap ──────────────────────────────────────────────────
+const mmCanvas=document.getElementById('mm-canvas');
+const mmCtx=mmCanvas.getContext('2d');
+const MM=110;
+
+function drawMinimap() {
+  mmCtx.clearRect(0,0,MM,MM);
+  mmCtx.fillStyle='rgba(0,0,0,0.6)';
+  mmCtx.fillRect(0,0,MM,MM);
+
+  const scale=0.38;
+  const ox=MM/2, oy=MM/2;
+  const px=playerBody.pos.x, pz=playerBody.pos.z;
+
+  // platforms
+  mmCtx.fillStyle='rgba(80,180,120,0.55)';
+  for (const p of platforms) {
+    if (p.type==='none') continue;
+    const bx=(p.min.x-px)*scale+ox;
+    const bz=(p.min.z-pz)*scale+oy;
+    const bw=(p.max.x-p.min.x)*scale;
+    const bh=(p.max.z-p.min.z)*scale;
+    mmCtx.fillRect(bx,bz,bw,bh);
+  }
+
+  // checkpoints
+  for (const cp of checkpoints) {
+    mmCtx.fillStyle=cp.reached?'#44cf6c':'#ffe066';
+    const cx=(cp.pos.x-px)*scale+ox;
+    const cz=(cp.pos.z-pz)*scale+oy;
+    mmCtx.beginPath(); mmCtx.arc(cx,cz,3,0,Math.PI*2); mmCtx.fill();
+  }
+
+  // finish
+  if (finishZone) {
+    mmCtx.fillStyle='rgba(155,93,229,0.7)';
+    const fx=((finishZone.min.x+finishZone.max.x)/2-px)*scale+ox;
+    const fz=((finishZone.min.z+finishZone.max.z)/2-pz)*scale+oy;
+    mmCtx.beginPath(); mmCtx.arc(fx,fz,5,0,Math.PI*2); mmCtx.fill();
+  }
+
+  // player dot
+  mmCtx.fillStyle='#ffffff';
+  mmCtx.beginPath(); mmCtx.arc(ox,oy,4,0,Math.PI*2); mmCtx.fill();
+
+  // direction arrow
+  mmCtx.save();
+  mmCtx.translate(ox,oy);
+  mmCtx.rotate(yaw);
+  mmCtx.fillStyle='#00e5ff';
+  mmCtx.beginPath(); mmCtx.moveTo(0,-8); mmCtx.lineTo(-4,4); mmCtx.lineTo(4,4);
+  mmCtx.closePath(); mmCtx.fill();
+  mmCtx.restore();
+}
+
+// ── Pause / Resume ───────────────────────────────────────────
+function togglePause() {
+  if (state==='playing') {
+    state='paused';
+    timerRunning=false;
+    unlockPointer();
+    document.getElementById('pause-screen').classList.remove('hidden');
+  } else if (state==='paused') {
+    state='playing';
+    timerRunning=true;
+    document.getElementById('pause-screen').classList.add('hidden');
+    lockPointer();
+  }
+}
+
+// ── Camera bob ───────────────────────────────────────────────
+let bobT=0;
+function getCameraBob(dt, speed, onGround) {
+  if (!onGround || speed<0.5) { bobT*=0.85; return {x:0,y:0}; }
+  bobT+=dt*speed*1.6;
+  return { x:Math.sin(bobT*2)*0.035, y:Math.abs(Math.sin(bobT))*0.055 };
+}
+
+// ── Label billboarding ────────────────────────────────────────
+const labels=[];
+function billboardLabels() {
+  scene.children.forEach(c=>{
+    if (c.isMesh && c.material && c.material.map instanceof THREE.CanvasTexture) {
+      c.lookAt(camera.position);
+    }
+  });
+}
+
+// ── Checkpoint ring animation ────────────────────────────────
+let cpRingT=0;
+function animateCPRings(dt) {
+  cpRingT+=dt;
+  for (const cp of checkpoints) {
+    if (!cp.reached) {
+      cp.mesh.rotation.z=cpRingT*1.2;
+      cp.mesh.position.y=cp.pos.y+1.2+Math.sin(cpRingT*2)*0.18;
+    }
+  }
+}
+
+// ── Moving platforms update ───────────────────────────────────
+function updateMovingPlatforms(t) {
+  for (const p of movingPlatforms) {
+    const offset=Math.sin(t*p.speed+p.phase)*p.dist;
+    const np=p.origPos.clone();
+    if (p.axis==='x') np.x+=offset;
+    if (p.axis==='y') np.y+=offset;
+    if (p.axis==='z') np.z+=offset;
+    p.mesh.position.copy(np);
+    const half=new THREE.Vector3(
+      (p.max.x-p.min.x)/2, (p.max.y-p.min.y)/2, (p.max.z-p.min.z)/2
+    );
+    p.min.copy(np).sub(half);
+    p.max.copy(np).add(half);
+  }
+}
+
+// ── Player update (physics + input) ──────────────────────────
+const _fwd=new THREE.Vector3();
+const _right=new THREE.Vector3();
+const _wishDir=new THREE.Vector3();
+
+let wasOnGround=false;
+let slideDir=new THREE.Vector3();
+
+function updatePlayer(dt) {
+  if (state!=='playing') return;
+
+  const pb=playerBody;
+  const isSprinting=keys['ShiftLeft']||keys['ShiftRight'];
+  const isCrouching=keys['ControlLeft']||keys['ControlRight'];
+  const wantWallRun=keys['KeyQ'];
+
+  // Look
+  yaw   -= mouseDX*SENS;
+  pitch -= mouseDY*SENS;
+  pitch  = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
+  mouseDX=0; mouseDY=0;
+
+  // Height
+  const targetHeight = isCrouching ? pb.crouchHeight : pb.standHeight;
+  pb.isCrouching = isCrouching;
+
+  // Move direction
+  const sinY=Math.sin(yaw), cosY=Math.cos(yaw);
+  _fwd.set(-sinY,0,-cosY);
+  _right.set(cosY,0,-sinY);
+  _wishDir.set(0,0,0);
+  if (keys['KeyW']||keys['ArrowUp'])    _wishDir.add(_fwd);
+  if (keys['KeyS']||keys['ArrowDown'])  _wishDir.sub(_fwd);
+  if (keys['KeyA']||keys['ArrowLeft'])  _wishDir.sub(_right);
+  if (keys['KeyD']||keys['ArrowRight']) _wishDir.add(_right);
+  if (_wishDir.lengthSq()>0) _wishDir.normalize();
+
+  const moveSpeed=isCrouching?WALK_SPEED*0.55:(isSprinting?SPRINT_SPEED:WALK_SPEED);
+
+  // ── Slide ────────────────────────────────────────────────
+  if (isCrouching && isSprinting && pb.onGround && pb.slideTimer<=0 && _wishDir.lengthSq()>0) {
+    pb.isSliding=true;
+    pb.slideTimer=0.55;
+    slideDir.copy(_wishDir);
+    pb.vel.x=slideDir.x*SLIDE_BOOST;
+    pb.vel.z=slideDir.z*SLIDE_BOOST;
+    spawnParticles(pb.pos.clone(),[0.9,0.9,1],10);
+  }
+  if (pb.slideTimer>0) {
+    pb.slideTimer-=dt;
+    if (pb.slideTimer<=0) pb.isSliding=false;
+  }
+
+  // ── Wall run ─────────────────────────────────────────────
+  const wallNorm=!pb.onGround && wantWallRun ? findWall(pb.pos, targetHeight) : null;
+  if (wallNorm && pb.vel.y<2) {
+    if (!pb.isWallRunning) { sfxWallrun(); pb.jumpsLeft=1; }
+    pb.isWallRunning=true;
+    pb.wallNormal.copy(wallNorm);
+    pb.wallRunTime+=dt;
+    pb.vel.y+=(-WALL_RUN_GRAV-pb.vel.y)*dt*4;
+    if (pb.vel.y<WALL_RUN_GRAV) pb.vel.y=WALL_RUN_GRAV;
+
+    // Run along wall
+    const along=new THREE.Vector3().crossVectors(wallNorm, new THREE.Vector3(0,1,0));
+    const dot=along.dot(_wishDir);
+    pb.vel.x+=along.x*dot*WALL_RUN_SPEED*dt*4;
+    pb.vel.z+=along.z*dot*WALL_RUN_SPEED*dt*4;
+
+    if (pb.wallRunTime>2.5) pb.isWallRunning=false; // max wall run duration
+  } else {
+    pb.isWallRunning=false;
+    pb.wallRunTime=0;
+  }
+
+  // ── Horizontal movement ───────────────────────────────────
+  if (!pb.isSliding) {
+    const ctrl=pb.onGround ? 1 : AIR_CONTROL;
+    const accel=50*ctrl;
+    const friction=pb.onGround ? 14 : 2;
+
+    // Current horizontal speed along wish dir
+    const wishX=_wishDir.x*moveSpeed;
+    const wishZ=_wishDir.z*moveSpeed;
+    pb.vel.x+=(wishX-pb.vel.x)*Math.min(1,accel*dt);
+    pb.vel.z+=(wishZ-pb.vel.z)*Math.min(1,accel*dt);
+
+    // Ice: less friction
+    if (pb.onGround) {
+      const underIce=platforms.some(p=>p.type==='ice'&&
+        pb.pos.x>p.min.x&&pb.pos.x<p.max.x&&pb.pos.z>p.min.z&&pb.pos.z<p.max.z
+        &&pb.pos.y>=p.max.y-0.5&&pb.pos.y<=p.max.y+0.5);
+      const fric=underIce?1.5:friction;
+      if (_wishDir.lengthSq()<0.01) {
+        pb.vel.x*=(1-Math.min(1,fric*dt));
+        pb.vel.z*=(1-Math.min(1,fric*dt));
+      }
+    }
+  }
+
+  // ── Gravity ───────────────────────────────────────────────
+  const grav=pb.isWallRunning?WALL_RUN_GRAV:GRAVITY;
+  pb.vel.y+=grav*dt;
+
+  // Coyote time
+  if (pb.onGround) pb.coyoteTime=0.12;
+  else if (pb.coyoteTime>0) pb.coyoteTime-=dt;
+
+  // Jump buffer
+  if (keys['Space']) pb.jumpBuffer=0.12;
+  else if (pb.jumpBuffer>0) pb.jumpBuffer-=dt;
+
+  // ── Jump ──────────────────────────────────────────────────
+  if (pb.jumpBuffer>0) {
+    if (pb.coyoteTime>0 && pb.jumpsLeft===2) {
+      // first jump (ground)
+      pb.vel.y=JUMP_FORCE;
+      pb.jumpsLeft=1;
+      pb.coyoteTime=0; pb.jumpBuffer=0;
+      sfxJump();
+      spawnParticles(pb.pos.clone(),[1,1,1],8);
+    } else if (pb.jumpsLeft>0 && pb.coyoteTime<=0) {
+      // double jump
+      pb.vel.y=JUMP_FORCE*0.88;
+      pb.jumpsLeft=0;
+      pb.jumpBuffer=0;
+      sfxDoubleJump();
+      spawnParticles(pb.pos.clone().add(new THREE.Vector3(0,.5,0)),[0.3,0.8,1],16);
+    } else if (pb.isWallRunning) {
+      // wall jump
+      pb.vel.y=JUMP_FORCE;
+      pb.vel.x+=pb.wallNormal.x*8;
+      pb.vel.z+=pb.wallNormal.z*8;
+      pb.jumpBuffer=0;
+      pb.isWallRunning=false;
+      sfxDoubleJump();
+    }
+  }
+
+  // ── Integrate ────────────────────────────────────────────
+  pb.pos.x+=pb.vel.x*dt;
+  pb.pos.z+=pb.vel.z*dt;
+  resolveXZ(pb.pos, pb.vel, targetHeight);
+
+  pb.pos.y+=pb.vel.y*dt;
+  const {onGround}=resolveY(pb.pos, pb.vel, targetHeight);
+
+  if (!wasOnGround && onGround && pb.vel.y<-2) {
+    sfxLand();
+    const spd=Math.abs(pb.vel.y);
+    spawnParticles(pb.pos.clone(),[0.8,0.8,0.8],Math.floor(spd*1.5));
+  }
+  if (onGround && !pb.onGround) {
+    pb.jumpsLeft=2; // reset on land
+  }
+  wasOnGround=pb.onGround;
+  pb.onGround=onGround;
+  if (onGround) pb.vel.y=Math.max(0,pb.vel.y);
+
+  // Kill planes
+  for (const kp of killPlanes) {
+    if (pb.pos.y<kp) { die(); break; }
+  }
+
+  // ── Camera position ────────────────────────────────────────
+  const horizSpeed=new THREE.Vector3(pb.vel.x,0,pb.vel.z).length();
+  const bob=getCameraBob(dt,horizSpeed,pb.onGround);
+  const eyeH=pb.isCrouching?pb.crouchHeight*0.9:pb.standHeight*0.9;
+
+  camera.position.set(
+    pb.pos.x + bob.x*Math.cos(yaw),
+    pb.pos.y + eyeH + bob.y,
+    pb.pos.z + bob.x*Math.sin(yaw)
+  );
+
+  const lookDir=new THREE.Vector3(
+    -Math.sin(yaw)*Math.cos(pitch),
+     Math.sin(pitch),
+    -Math.cos(yaw)*Math.cos(pitch)
+  );
+  camera.lookAt(camera.position.clone().add(lookDir));
+
+  // Slide tilt
+  const tiltTarget=pb.isWallRunning?0.12*Math.sign(pb.wallNormal.x):0;
+  camera.rotation.z+=(tiltTarget-camera.rotation.z)*dt*8;
+}
+
+// ── Main loop ────────────────────────────────────────────────
+let lastTime=0;
+let totalTime=0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt=Math.min((ts-lastTime)/1000, 0.05);
+  lastTime=ts;
+  totalTime=ts/1000;
+
+  if (state==='playing') {
+    if (timerRunning) timer+=dt;
+    updateMovingPlatforms(totalTime);
+    updatePlayer(dt);
+    animateCPRings(dt);
+    checkZones();
+    billboardLabels();
+
+    // combo fade
+    if (comboTimer>0) {
+      comboTimer-=dt;
+      if (comboTimer<=0) {
+        document.getElementById('combo').classList.remove('show');
+        comboCount=0;
+      }
+    }
+
+    updateHUD();
+  }
+
+  updateParticles(dt);
+  drawMinimap();
+  renderer.render(scene, camera);
+}
+
+// ── UI wiring ────────────────────────────────────────────────
+document.getElementById('start-btn').addEventListener('click', () => {
+  ensureAudio();
+  currentLevel=0;
+  deaths=0; timer=0; hasCheckpoint=false;
+  LEVELS[currentLevel]();
+  document.getElementById('start-screen').classList.add('hidden');
+  state='playing'; timerRunning=true;
+  lockPointer();
+});
+
+document.getElementById('resume-btn').addEventListener('click', () => {
+  togglePause();
+});
+
+document.getElementById('next-btn').addEventListener('click', () => {
+  ensureAudio();
+  document.getElementById('level-screen').classList.add('hidden');
+  if (currentLevel<LEVELS.length-1) {
+    currentLevel++;
+  } else {
+    currentLevel=0;
+  }
+  timer=0; hasCheckpoint=false;
+  checkpoints.forEach(cp=>cp.reached=false);
+  LEVELS[currentLevel]();
+  state='playing'; timerRunning=true;
+  lockPointer();
+});
+
+// Start rendering immediately (even on menu)
+LEVELS[0]();
+requestAnimationFrame(ts=>{lastTime=ts; loop(ts);});
+</script>
+</body>
+</html>
